@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"net/http"
 	"net/url"
 	"strings"
@@ -79,6 +80,9 @@ func (b *Bxmpp) Send(msg config.Message) (string, error) {
 
 	b.Log.Debugf("=> Receiving %#v", msg)
 
+	msg.Text = b.replaceActionBefore(msg.Text)
+	b.Log.Debugf("=> Changed %#v", msg.Text)
+	
 	if msg.Event == config.EventAvatarDownload {
 		return b.cacheAvatar(&msg), nil
 	}
@@ -345,6 +349,19 @@ func (b *Bxmpp) replaceAction(text string) (string, bool) {
 	return text, false
 }
 
+func (b *Bxmpp) replaceActionBefore(text string) (string) {
+	for _, outer := range b.GetStringSlice2D("ReplaceSentMessages") {
+		search := outer[0]
+		replace := outer[1]
+		re, err := regexp.Compile(search)
+		if err != nil {
+			b.Log.Errorf("regexp in %s failed: %s", text, err)
+			break
+		}
+		text = re.ReplaceAllString(text, replace)
+	}
+	return text
+}
 // handleUploadFile handles native upload of files
 func (b *Bxmpp) handleUploadFile(msg *config.Message) error {
 	var urlDesc string
