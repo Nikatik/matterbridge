@@ -105,6 +105,7 @@ type Protocol struct {
 	Jid                    string   // xmpp
 	JoinDelay              string   // all protocols
 	Label                  string   // all protocols
+	LabelAd                string   // all protocols
 	Login                  string   // mattermost, matrix
 	LogFile                string   // general
 	MediaDownloadBlackList []string
@@ -140,6 +141,7 @@ type Protocol struct {
 	QuoteLengthLimit       int        // telegram
 	RejoinDelay            int        // IRC
 	ReplaceMessages        [][]string // all protocols
+	ReplaceSentMessages    [][]string // all protocols
 	ReplaceNicks           [][]string // all protocols
 	RemoteNickFormat       string     // all protocols
 	RunCommands            []string   // IRC
