@@ -344,6 +344,7 @@ func (gw *Gateway) modifyUsername(msg *config.Message, dest *bridge.Bridge) stri
 	nick = strings.ReplaceAll(nick, "{PROTOCOL}", br.Protocol)
 	nick = strings.ReplaceAll(nick, "{GATEWAY}", gw.Name)
 	nick = strings.ReplaceAll(nick, "{LABEL}", br.GetString("Label"))
+	nick = strings.ReplaceAll(nick, "{LABELAD}", br.GetString("LabelAd"))
 	nick = strings.ReplaceAll(nick, "{NICK}", msg.Username)
 	nick = strings.ReplaceAll(nick, "{USERID}", msg.UserID)
 	nick = strings.ReplaceAll(nick, "{CHANNEL}", msg.Channel)
