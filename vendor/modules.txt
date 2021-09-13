@@ -4,6 +4,11 @@ github.com/42wim/go-gitter
 # github.com/Baozisoftware/qrcode-terminal-go v0.0.0-20170407111555-c0650d8dff0f
 ## explicit
 github.com/Baozisoftware/qrcode-terminal-go
+# github.com/Benau/go_rlottie v0.0.0-20210807002906-98c1b2421989
+github.com/Benau/go_rlottie
+# github.com/Benau/tgsconverter v0.0.0-20210809170556-99f4a4f6337f
+## explicit
+github.com/Benau/tgsconverter/libtgsconverter
 # github.com/Jeffail/gabs v1.4.0
 ## explicit
 github.com/Jeffail/gabs
@@ -36,9 +41,11 @@ github.com/SevereCloud/vksdk/v2/events
 github.com/SevereCloud/vksdk/v2/internal
 github.com/SevereCloud/vksdk/v2/longpoll-bot
 github.com/SevereCloud/vksdk/v2/object
+# github.com/av-elier/go-decimal-to-rational v0.0.0-20191127152832-89e6aad02ecf
+github.com/av-elier/go-decimal-to-rational
 # github.com/blang/semver v3.5.1+incompatible
 github.com/blang/semver
-# github.com/d5/tengo/v2 v2.7.0
+# github.com/d5/tengo/v2 v2.8.0
 ## explicit
 github.com/d5/tengo/v2
 github.com/d5/tengo/v2/parser
@@ -73,7 +80,7 @@ github.com/gomarkdown/markdown
 github.com/gomarkdown/markdown/ast
 github.com/gomarkdown/markdown/html
 github.com/gomarkdown/markdown/parser
-# github.com/google/gops v0.3.18
+# github.com/google/gops v0.3.19
 ## explicit
 github.com/google/gops/agent
 github.com/google/gops/internal
@@ -111,6 +118,8 @@ github.com/hashicorp/hcl/json/token
 # github.com/jpillora/backoff v1.0.0
 ## explicit
 github.com/jpillora/backoff
+# github.com/kettek/apng v0.0.0-20191108220231-414630eed80f
+github.com/kettek/apng
 # github.com/keybase/go-keybase-chat-bot v0.0.0-20200505163032-5cacf52379da
 ## explicit
 github.com/keybase/go-keybase-chat-bot/kbchat
@@ -121,7 +130,7 @@ github.com/keybase/go-keybase-chat-bot/kbchat/types/stellar1
 # github.com/kyokomi/emoji/v2 v2.2.8
 ## explicit
 github.com/kyokomi/emoji/v2
-# github.com/labstack/echo/v4 v4.3.0
+# github.com/labstack/echo/v4 v4.4.0
 ## explicit
 github.com/labstack/echo/v4
 github.com/labstack/echo/v4/middleware
@@ -146,7 +155,7 @@ github.com/matterbridge/Rocket.Chat.Go.SDK/rest
 # github.com/matterbridge/discordgo v0.21.2-0.20210201201054-fb39a175b4f7
 ## explicit
 github.com/matterbridge/discordgo
-# github.com/matterbridge/go-xmpp v0.0.0-20200418225040-c8a3a57b4050
+# github.com/matterbridge/go-xmpp v0.0.0-20210731150933-5702291c239f
 ## explicit
 github.com/matterbridge/go-xmpp
 # github.com/matterbridge/gozulipbot v0.0.0-20200820220548-be5824faa913
@@ -238,12 +247,14 @@ github.com/shazow/ssh-chat/sshd/terminal
 # github.com/sirupsen/logrus v1.8.1
 ## explicit
 github.com/sirupsen/logrus
+# github.com/sizeofint/webpanimation v0.0.0-20210809145948-1d2b32119882
+github.com/sizeofint/webpanimation
 # github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 ## explicit
 github.com/skip2/go-qrcode
 github.com/skip2/go-qrcode/bitset
 github.com/skip2/go-qrcode/reedsolomon
-# github.com/slack-go/slack v0.9.1
+# github.com/slack-go/slack v0.9.3
 ## explicit
 github.com/slack-go/slack
 github.com/slack-go/slack/internal/backoff
@@ -260,7 +271,7 @@ github.com/spf13/cast
 github.com/spf13/jwalterweatherman
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
-# github.com/spf13/viper v1.8.0
+# github.com/spf13/viper v1.8.1
 ## explicit
 github.com/spf13/viper
 # github.com/stretchr/testify v1.7.0
@@ -330,7 +341,7 @@ golang.org/x/crypto/salsa20/salsa
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/image v0.0.0-20210607152325-775e3b0c77b9
+# golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d
 ## explicit
 golang.org/x/image/bmp
 golang.org/x/image/ccitt
@@ -351,13 +362,13 @@ golang.org/x/net/http2/h2c
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
 golang.org/x/net/websocket
-# golang.org/x/oauth2 v0.0.0-20210615190721-d04028783cf1
+# golang.org/x/oauth2 v0.0.0-20210628180205-a41e5a781914
 ## explicit
 golang.org/x/oauth2
 golang.org/x/oauth2/clientcredentials
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/microsoft
-# golang.org/x/sys v0.0.0-20210510120138-977fb7262007
+# golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
