@@ -132,7 +132,6 @@ func (b *Bxmpp) Send(msg config.Message) (string, error) {
 	var msgReplaceID string
 	msgID := xid.New().String()
 	if msg.ID != "" {
-		msgID = msg.ID
 		msgReplaceID = msg.ID
 	}
 	b.Log.Debugf("=> Sending message %#v", msg)
@@ -288,7 +287,13 @@ func (b *Bxmpp) handleXMPP() error {
 	for {
 		m, err := b.xc.Recv()
 		if err != nil {
-			return err
+			// An error together with AvatarData is non-fatal
+			switch m.(type) {
+			case xmpp.AvatarData:
+				continue
+			default:
+				return err
+			}
 		}
 
 		switch v := m.(type) {

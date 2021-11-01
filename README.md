@@ -164,7 +164,7 @@ See <https://github.com/42wim/matterbridge/wiki>
 
 ### Binaries
 
-- Latest stable release [v1.22.3](https://github.com/42wim/matterbridge/releases/latest)
+- Latest stable release [v1.23.1](https://github.com/42wim/matterbridge/releases/latest)
 - Development releases (follows master) can be downloaded [here](https://github.com/42wim/matterbridge/actions) selecting the latest green build and then artifacts.
 
 To install or upgrade just download the latest [binary](https://github.com/42wim/matterbridge/releases/latest). On \*nix platforms you may need to make the binary executable - you can do this by running `chmod a+x` on the binary (example: `chmod a+x matterbridge-1.20.0-linux-64bit`). After downloading (and making the binary executable, if necessary), follow the instructions on the [howto](https://github.com/42wim/matterbridge/wiki/How-to-create-your-config) for a step by step walkthrough for creating your configuration.
@@ -180,10 +180,18 @@ To install or upgrade just download the latest [binary](https://github.com/42wim
 Most people just want to use binaries, you can find those [here](https://github.com/42wim/matterbridge/releases/latest)
 
 If you really want to build from source, follow these instructions:
-Go 1.13+ is required. Make sure you have [Go](https://golang.org/doc/install) properly installed.
+Go 1.17+ is required. Make sure you have [Go](https://golang.org/doc/install) properly installed.
+
+To install the latest stable run:
 
 ```bash
-go get github.com/42wim/matterbridge
+go install github.com/42wim/matterbridge
+```
+
+To install the latest dev run:
+
+```bash
+go install github.com/42wim/matterbridge@master
 ```
 
 You should now have matterbridge binary in the ~/go/bin directory:
@@ -328,6 +336,7 @@ See [FAQ](https://github.com/42wim/matterbridge/wiki/FAQ)
 - <https://daniele.tech/2019/02/how-to-use-matterbridge-to-connect-2-different-slack-workspaces/>
 - <https://userlinux.net/mattermost-and-matterbridge.html>
 - <https://nextcloud.com/blog/bridging-chat-services-in-talk/>
+- <https://minecraftchest1.wordpress.com/2021/06/05/how-to-install-and-setup-matterbridge/>
 - Youtube: [whatsapp - telegram bridging](https://www.youtube.com/watch?v=W-VXISoKtNc)
 
 ## Thanks
