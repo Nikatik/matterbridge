@@ -1,4 +1,4 @@
-module github.com/Nikatik/matterbridge
+module github.com/nikatik/matterbridge
 
 require (
 	github.com/42wim/go-gitter v0.0.0-20170828205020-017310c2d557
