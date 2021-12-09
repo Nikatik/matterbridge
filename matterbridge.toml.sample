@@ -34,6 +34,11 @@ UseSASL=false
 #OPTIONAL (default false)
 SkipTLSVerify=true
 
+#Local address to use for server connection
+#Note that Server and Bind must resolve to addresses of the same family.
+#OPTIONAL (default "")
+Bind=""
+
 #If you know your charset, you can specify it manually.
 #Otherwise it tries to detect this automatically. Select one below
 # "iso-8859-2:1987", "iso-8859-9:1989", "866", "latin9", "iso-8859-10:1992", "iso-ir-109", "hebrew",
@@ -1700,6 +1705,7 @@ RemoteNickFormat="{NICK}"
 
 #RemoteNickFormat defines how remote users appear on this bridge
 #The string "{NICK}" (case sensitive) will be replaced by the actual nick.
+#The string "{NOPINGNICK}" (case sensitive) will be replaced by the actual nick / username, but with a ZWSP inside the nick, so the irc user with the same nick won't get pinged.
 #The string "{USERID}" (case sensitive) will be replaced by the user ID.
 #The string "{BRIDGE}" (case sensitive) will be replaced by the sending bridge
 #The string "{LABEL}" (case sensitive) will be replaced by label= field of the sending bridge
