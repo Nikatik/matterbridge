@@ -55,9 +55,25 @@ type QRScannedWithoutMultidevice struct{}
 // at this point, which is why this event doesn't contain any data.
 type Connected struct{}
 
+// KeepAliveTimeout is emitted when the keepalive ping request to WhatsApp web servers times out.
+//
+// Currently, there's no automatic handling for these, but it's expected that the TCP connection will
+// either start working again or notice it's dead on its own eventually. Clients may use this event to
+// decide to force a disconnect+reconnect faster.
+type KeepAliveTimeout struct {
+	ErrorCount  int
+	LastSuccess time.Time
+}
+
+// KeepAliveRestored is emitted if the keepalive pings start working again after some KeepAliveTimeout events.
+// Note that if the websocket disconnects before the pings start working, this event will not be emitted.
+type KeepAliveRestored struct{}
+
 // LoggedOut is emitted when the client has been unpaired from the phone.
 //
 // This can happen while connected (stream:error messages) or right after connecting (connect failure messages).
+//
+// This will not be emitted when the logout is initiated by this client (using Client.LogOut()).
 type LoggedOut struct {
 	// OnConnect is true if the event was triggered by a connect failure message.
 	// If it's false, the event was triggered by a stream:error message.
@@ -76,16 +92,16 @@ type StreamReplaced struct{}
 type TempBanReason int
 
 const (
-	TempBanBlockedByUsers         TempBanReason = 101
-	TempBanSentToTooManyPeople    TempBanReason = 102
+	TempBanSentToTooManyPeople    TempBanReason = 101
+	TempBanBlockedByUsers         TempBanReason = 102
 	TempBanCreatedTooManyGroups   TempBanReason = 103
 	TempBanSentTooManySameMessage TempBanReason = 104
 	TempBanBroadcastList          TempBanReason = 106
 )
 
 var tempBanReasonMessage = map[TempBanReason]string{
-	TempBanBlockedByUsers:         "too many people blocked you",
 	TempBanSentToTooManyPeople:    "you sent too many messages to people who don't have you in their address books",
+	TempBanBlockedByUsers:         "too many people blocked you",
 	TempBanCreatedTooManyGroups:   "you created too many groups with people who don't have you in their address books",
 	TempBanSentTooManySameMessage: "you sent the same message to too many people",
 	TempBanBroadcastList:          "you sent too many messages to a broadcast list",
@@ -103,35 +119,40 @@ func (tbr TempBanReason) String() string {
 // TemporaryBan is emitted when there's a connection failure with the ConnectFailureTempBanned reason code.
 type TemporaryBan struct {
 	Code   TempBanReason
-	Expire time.Time
+	Expire time.Duration
 }
 
 func (tb *TemporaryBan) String() string {
-	if tb.Expire.IsZero() {
+	if tb.Expire == 0 {
 		return fmt.Sprintf("You've been temporarily banned: %v", tb.Code)
 	}
-	return fmt.Sprintf("You've been temporarily banned: %v. The ban expires at %v", tb.Code, tb.Expire)
+	return fmt.Sprintf("You've been temporarily banned: %v. The ban expires in %v", tb.Code, tb.Expire)
 }
 
 // ConnectFailureReason is an error code included in connection failure events.
 type ConnectFailureReason int
 
 const (
-	ConnectFailureLoggedOut     ConnectFailureReason = 401
-	ConnectFailureTempBanned    ConnectFailureReason = 402
-	ConnectFailureBanned        ConnectFailureReason = 403
-	ConnectFailureUnknownLogout ConnectFailureReason = 406
+	ConnectFailureLoggedOut      ConnectFailureReason = 401
+	ConnectFailureTempBanned     ConnectFailureReason = 402
+	ConnectFailureMainDeviceGone ConnectFailureReason = 403
+	ConnectFailureUnknownLogout  ConnectFailureReason = 406
 
 	ConnectFailureClientOutdated ConnectFailureReason = 405
 	ConnectFailureBadUserAgent   ConnectFailureReason = 409
 
 	// 400, 500 and 501 are also existing codes, but the meaning is unknown
+
+	// 503 doesn't seem to be included in the web app JS with the other codes, and it's very rare,
+	// but does happen after a 503 stream error sometimes.
+
+	ConnectFailureServiceUnavailable ConnectFailureReason = 503
 )
 
 var connectFailureReasonMessage = map[ConnectFailureReason]string{
 	ConnectFailureLoggedOut:      "logged out from another device",
 	ConnectFailureTempBanned:     "account temporarily banned",
-	ConnectFailureBanned:         "account banned from WhatsApp",
+	ConnectFailureMainDeviceGone: "primary device was logged out", // seems to happen for both bans and switching phones
 	ConnectFailureUnknownLogout:  "logged out for unknown reason",
 	ConnectFailureClientOutdated: "client is out of date",
 	ConnectFailureBadUserAgent:   "client user agent was rejected",
@@ -139,7 +160,7 @@ var connectFailureReasonMessage = map[ConnectFailureReason]string{
 
 // IsLoggedOut returns true if the client should delete session data due to this connect failure.
 func (cfr ConnectFailureReason) IsLoggedOut() bool {
-	return cfr == ConnectFailureLoggedOut || cfr == ConnectFailureBanned || cfr == ConnectFailureUnknownLogout
+	return cfr == ConnectFailureLoggedOut || cfr == ConnectFailureMainDeviceGone || cfr == ConnectFailureUnknownLogout
 }
 
 // String returns the reason code and a short human-readable description of the error.
@@ -197,12 +218,49 @@ type Message struct {
 	Info    types.MessageInfo // Information about the message like the chat and sender IDs
 	Message *waProto.Message  // The actual message struct
 
-	IsEphemeral bool // True if the message was unwrapped from an EphemeralMessage
-	IsViewOnce  bool // True if the message was unwrapped from a ViewOnceMessage
+	IsEphemeral           bool // True if the message was unwrapped from an EphemeralMessage
+	IsViewOnce            bool // True if the message was unwrapped from a ViewOnceMessage or ViewOnceMessageV2
+	IsViewOnceV2          bool // True if the message was unwrapped from a ViewOnceMessage
+	IsDocumentWithCaption bool // True if the message was unwrapped from a DocumentWithCaptionMessage
+	IsEdit                bool // True if the message was unwrapped from an EditedMessage
 
 	// The raw message struct. This is the raw unmodified data, which means the actual message might
 	// be wrapped in DeviceSentMessage, EphemeralMessage or ViewOnceMessage.
 	RawMessage *waProto.Message
+}
+
+// UnwrapRaw fills the Message, IsEphemeral and IsViewOnce fields based on the raw message in the RawMessage field.
+func (evt *Message) UnwrapRaw() *Message {
+	evt.Message = evt.RawMessage
+	if evt.Message.GetDeviceSentMessage().GetMessage() != nil {
+		evt.Info.DeviceSentMeta = &types.DeviceSentMeta{
+			DestinationJID: evt.Message.GetDeviceSentMessage().GetDestinationJid(),
+			Phash:          evt.Message.GetDeviceSentMessage().GetPhash(),
+		}
+		evt.Message = evt.Message.GetDeviceSentMessage().GetMessage()
+	}
+	if evt.Message.GetEphemeralMessage().GetMessage() != nil {
+		evt.Message = evt.Message.GetEphemeralMessage().GetMessage()
+		evt.IsEphemeral = true
+	}
+	if evt.Message.GetViewOnceMessage().GetMessage() != nil {
+		evt.Message = evt.Message.GetViewOnceMessage().GetMessage()
+		evt.IsViewOnce = true
+	}
+	if evt.Message.GetViewOnceMessageV2().GetMessage() != nil {
+		evt.Message = evt.Message.GetViewOnceMessageV2().GetMessage()
+		evt.IsViewOnce = true
+		evt.IsViewOnceV2 = true
+	}
+	if evt.Message.GetDocumentWithCaptionMessage().GetMessage() != nil {
+		evt.Message = evt.Message.GetDocumentWithCaptionMessage().GetMessage()
+		evt.IsDocumentWithCaption = true
+	}
+	if evt.Message.GetEditedMessage().GetMessage() != nil {
+		evt.Message = evt.Message.GetEditedMessage().GetMessage()
+		evt.IsEdit = true
+	}
+	return evt
 }
 
 // ReceiptType represents the type of a Receipt event.
@@ -211,12 +269,20 @@ type ReceiptType string
 const (
 	// ReceiptTypeDelivered means the message was delivered to the device (but the user might not have noticed).
 	ReceiptTypeDelivered ReceiptType = ""
+	// ReceiptTypeSender is sent by your other devices when a message you sent is delivered to them.
+	ReceiptTypeSender ReceiptType = "sender"
 	// ReceiptTypeRetry means the message was delivered to the device, but decrypting the message failed.
 	ReceiptTypeRetry ReceiptType = "retry"
 	// ReceiptTypeRead means the user opened the chat and saw the message.
 	ReceiptTypeRead ReceiptType = "read"
 	// ReceiptTypeReadSelf means the current user read a message from a different device, and has read receipts disabled in privacy settings.
 	ReceiptTypeReadSelf ReceiptType = "read-self"
+	// ReceiptTypePlayed means the user opened a view-once media message.
+	//
+	// This is dispatched for both incoming and outgoing messages when played. If the current user opened the media,
+	// it means the media should be removed from all devices. If a recipient opened the media, it's just a notification
+	// for the sender that the media was viewed.
+	ReceiptTypePlayed ReceiptType = "played"
 )
 
 // GoString returns the name of the Go constant for the ReceiptType value.
@@ -228,6 +294,8 @@ func (rt ReceiptType) GoString() string {
 		return "events.ReceiptTypeReadSelf"
 	case ReceiptTypeDelivered:
 		return "events.ReceiptTypeDelivered"
+	case ReceiptTypePlayed:
+		return "events.ReceiptTypePlayed"
 	default:
 		return fmt.Sprintf("events.ReceiptType(%#v)", string(rt))
 	}
@@ -246,7 +314,8 @@ type Receipt struct {
 // ChatPresence is emitted when a chat state update (also known as typing notification) is received.
 //
 // Note that WhatsApp won't send you these updates unless you mark yourself as online:
-//  client.SendPresence(types.PresenceAvailable)
+//
+//	client.SendPresence(types.PresenceAvailable)
 type ChatPresence struct {
 	types.MessageSource
 	State types.ChatPresence      // The current state, either composing or paused
@@ -256,7 +325,8 @@ type ChatPresence struct {
 // Presence is emitted when a presence update is received.
 //
 // Note that WhatsApp only sends you presence updates for individual users after you subscribe to them:
-//  client.SubscribePresence(user JID)
+//
+//	client.SubscribePresence(user JID)
 type Presence struct {
 	// The user whose presence event this is
 	From types.JID
@@ -268,7 +338,9 @@ type Presence struct {
 
 // JoinedGroup is emitted when you join or are added to a group.
 type JoinedGroup struct {
-	Reason string // If the event was triggered by you using an invite link, this will be "invite"
+	Reason    string          // If the event was triggered by you using an invite link, this will be "invite".
+	Type      string          // "new" if it's a newly created group.
+	CreateKey types.MessageID // If you created the group, this is the same message ID you passed to CreateGroup.
 	types.GroupInfo
 }
 
@@ -284,6 +356,11 @@ type GroupInfo struct {
 	Locked    *types.GroupLocked    // Group locked status change (can only admins edit group info?)
 	Announce  *types.GroupAnnounce  // Group announce status change (can only admins send messages?)
 	Ephemeral *types.GroupEphemeral // Disappearing messages change
+
+	Delete *types.GroupDelete
+
+	Link   *types.GroupLinkChange
+	Unlink *types.GroupLinkChange
 
 	NewInviteLink *string // Group invite link change
 
@@ -347,10 +424,17 @@ type OfflineSyncCompleted struct {
 	Count int
 }
 
+type MediaRetryError struct {
+	Code int
+}
+
 // MediaRetry is emitted when the phone sends a response to a media retry request.
 type MediaRetry struct {
 	Ciphertext []byte
 	IV         []byte
+
+	// Sometimes there's an unencrypted media retry error. In these cases, Ciphertext and IV will be nil.
+	Error *MediaRetryError
 
 	Timestamp time.Time // The time of the response.
 

@@ -7,6 +7,7 @@
 package whatsmeow
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -20,7 +21,9 @@ import (
 )
 
 const BusinessMessageLinkPrefix = "https://wa.me/message/"
+const ContactQRLinkPrefix = "https://wa.me/qr/"
 const BusinessMessageLinkDirectPrefix = "https://api.whatsapp.com/message/"
+const ContactQRLinkDirectPrefix = "https://api.whatsapp.com/qr/"
 
 // ResolveBusinessMessageLink resolves a business message short link and returns the target JID, business name and
 // text to prefill in the input field (if any).
@@ -33,7 +36,7 @@ func (cli *Client) ResolveBusinessMessageLink(code string) (*types.BusinessMessa
 
 	resp, err := cli.sendIQ(infoQuery{
 		Namespace: "w:qr",
-		Type:      "get",
+		Type:      iqGet,
 		// WhatsApp android doesn't seem to have a "to" field for this one at all, not sure why but it works
 		Content: []waBinary.Node{{
 			Tag: "qr",
@@ -70,6 +73,89 @@ func (cli *Client) ResolveBusinessMessageLink(code string) (*types.BusinessMessa
 	return &target, ag.Error()
 }
 
+// ResolveContactQRLink resolves a link from a contact share QR code and returns the target JID and push name.
+//
+// The links look like https://wa.me/qr/<code> or https://api.whatsapp.com/qr/<code>. You can either provide
+// the full link, or just the <code> part.
+func (cli *Client) ResolveContactQRLink(code string) (*types.ContactQRLinkTarget, error) {
+	code = strings.TrimPrefix(code, ContactQRLinkPrefix)
+	code = strings.TrimPrefix(code, ContactQRLinkDirectPrefix)
+
+	resp, err := cli.sendIQ(infoQuery{
+		Namespace: "w:qr",
+		Type:      iqGet,
+		Content: []waBinary.Node{{
+			Tag: "qr",
+			Attrs: waBinary.Attrs{
+				"code": code,
+			},
+		}},
+	})
+	if errors.Is(err, ErrIQNotFound) {
+		return nil, wrapIQError(ErrContactQRLinkNotFound, err)
+	} else if err != nil {
+		return nil, err
+	}
+	qrChild, ok := resp.GetOptionalChildByTag("qr")
+	if !ok {
+		return nil, &ElementMissingError{Tag: "qr", In: "response to contact link query"}
+	}
+	var target types.ContactQRLinkTarget
+	ag := qrChild.AttrGetter()
+	target.JID = ag.JID("jid")
+	target.PushName = ag.OptionalString("notify")
+	target.Type = ag.String("type")
+	return &target, ag.Error()
+}
+
+// GetContactQRLink gets your own contact share QR link that can be resolved using ResolveContactQRLink
+// (or scanned with the official apps when encoded as a QR code).
+//
+// If the revoke parameter is set to true, it will ask the server to revoke the previous link and generate a new one.
+func (cli *Client) GetContactQRLink(revoke bool) (string, error) {
+	action := "get"
+	if revoke {
+		action = "revoke"
+	}
+	resp, err := cli.sendIQ(infoQuery{
+		Namespace: "w:qr",
+		Type:      iqSet,
+		Content: []waBinary.Node{{
+			Tag: "qr",
+			Attrs: waBinary.Attrs{
+				"type":   "contact",
+				"action": action,
+			},
+		}},
+	})
+	if err != nil {
+		return "", err
+	}
+	qrChild, ok := resp.GetOptionalChildByTag("qr")
+	if !ok {
+		return "", &ElementMissingError{Tag: "qr", In: "response to own contact link fetch"}
+	}
+	ag := qrChild.AttrGetter()
+	return ag.String("code"), ag.Error()
+}
+
+// SetStatusMessage updates the current user's status text, which is shown in the "About" section in the user profile.
+//
+// This is different from the ephemeral status broadcast messages. Use SendMessage to types.StatusBroadcastJID to send
+// such messages.
+func (cli *Client) SetStatusMessage(msg string) error {
+	_, err := cli.sendIQ(infoQuery{
+		Namespace: "status",
+		Type:      iqSet,
+		To:        types.ServerJID,
+		Content: []waBinary.Node{{
+			Tag:     "status",
+			Content: msg,
+		}},
+	})
+	return err
+}
+
 // IsOnWhatsApp checks if the given phone numbers are registered on WhatsApp.
 // The phone numbers should be in international format, including the `+` prefix.
 func (cli *Client) IsOnWhatsApp(phones []string) ([]types.IsOnWhatsAppResponse, error) {
@@ -77,7 +163,7 @@ func (cli *Client) IsOnWhatsApp(phones []string) ([]types.IsOnWhatsAppResponse, 
 	for i := range jids {
 		jids[i] = types.NewJID(phones[i], types.LegacyUserServer)
 	}
-	list, err := cli.usync(jids, "query", "interactive", []waBinary.Node{
+	list, err := cli.usync(context.TODO(), jids, "query", "interactive", []waBinary.Node{
 		{Tag: "business", Content: []waBinary.Node{{Tag: "verified_name"}}},
 		{Tag: "contact"},
 	})
@@ -108,7 +194,7 @@ func (cli *Client) IsOnWhatsApp(phones []string) ([]types.IsOnWhatsAppResponse, 
 
 // GetUserInfo gets basic user info (avatar, status, verified business name, device list).
 func (cli *Client) GetUserInfo(jids []types.JID) (map[types.JID]types.UserInfo, error) {
-	list, err := cli.usync(jids, "full", "background", []waBinary.Node{
+	list, err := cli.usync(context.TODO(), jids, "full", "background", []waBinary.Node{
 		{Tag: "business", Content: []waBinary.Node{{Tag: "verified_name"}}},
 		{Tag: "status"},
 		{Tag: "picture"},
@@ -123,22 +209,19 @@ func (cli *Client) GetUserInfo(jids []types.JID) (map[types.JID]types.UserInfo, 
 		if child.Tag != "user" || !jidOK {
 			continue
 		}
+		var info types.UserInfo
 		verifiedName, err := parseVerifiedName(child.GetChildByTag("business"))
 		if err != nil {
 			cli.Log.Warnf("Failed to parse %s's verified name details: %v", jid, err)
 		}
 		status, _ := child.GetChildByTag("status").Content.([]byte)
-		pictureID, _ := child.GetChildByTag("picture").Attrs["id"].(string)
-		devices := parseDeviceList(jid.User, child.GetChildByTag("devices"))
-		respData[jid] = types.UserInfo{
-			VerifiedName: verifiedName,
-			Status:       string(status),
-			PictureID:    pictureID,
-			Devices:      devices,
-		}
+		info.Status = string(status)
+		info.PictureID, _ = child.GetChildByTag("picture").Attrs["id"].(string)
+		info.Devices = parseDeviceList(jid.User, child.GetChildByTag("devices"))
 		if verifiedName != nil {
-			cli.updateBusinessName(jid, verifiedName.Details.GetVerifiedName())
+			cli.updateBusinessName(jid, nil, verifiedName.Details.GetVerifiedName())
 		}
+		respData[jid] = info
 	}
 	return respData, nil
 }
@@ -147,6 +230,10 @@ func (cli *Client) GetUserInfo(jids []types.JID) (map[types.JID]types.UserInfo, 
 // regular JIDs, and the output will be a list of AD JIDs. The local device will not be included in
 // the output even if the user's JID is included in the input. All other devices will be included.
 func (cli *Client) GetUserDevices(jids []types.JID) ([]types.JID, error) {
+	return cli.GetUserDevicesContext(context.Background(), jids)
+}
+
+func (cli *Client) GetUserDevicesContext(ctx context.Context, jids []types.JID) ([]types.JID, error) {
 	cli.userDevicesCacheLock.Lock()
 	defer cli.userDevicesCacheLock.Unlock()
 
@@ -163,7 +250,7 @@ func (cli *Client) GetUserDevices(jids []types.JID) ([]types.JID, error) {
 		return devices, nil
 	}
 
-	list, err := cli.usync(jidsToSync, "query", "message", []waBinary.Node{
+	list, err := cli.usync(ctx, jidsToSync, "query", "message", []waBinary.Node{
 		{Tag: "devices", Attrs: waBinary.Attrs{"version": "2"}},
 	})
 	if err != nil {
@@ -183,39 +270,91 @@ func (cli *Client) GetUserDevices(jids []types.JID) ([]types.JID, error) {
 	return devices, nil
 }
 
+type GetProfilePictureParams struct {
+	Preview     bool
+	ExistingID  string
+	IsCommunity bool
+}
+
 // GetProfilePictureInfo gets the URL where you can download a WhatsApp user's profile picture or group's photo.
-// If the user or group doesn't have a profile picture, this returns nil with no error.
-func (cli *Client) GetProfilePictureInfo(jid types.JID, preview bool) (*types.ProfilePictureInfo, error) {
+//
+// Optionally, you can pass the last known profile picture ID.
+// If the profile picture hasn't changed, this will return nil with no error.
+//
+// To get a community photo, you should pass `IsCommunity: true`, as otherwise you may get a 401 error.
+func (cli *Client) GetProfilePictureInfo(jid types.JID, params *GetProfilePictureParams) (*types.ProfilePictureInfo, error) {
 	attrs := waBinary.Attrs{
 		"query": "url",
 	}
-	if preview {
+	var target, to types.JID
+	if params == nil {
+		params = &GetProfilePictureParams{}
+	}
+	if params.Preview {
 		attrs["type"] = "preview"
 	} else {
 		attrs["type"] = "image"
 	}
-	resp, err := cli.sendIQ(infoQuery{
-		Namespace: "w:profile:picture",
-		Type:      "get",
-		To:        jid,
-		Content: []waBinary.Node{{
+	if params.ExistingID != "" {
+		attrs["id"] = params.ExistingID
+	}
+	var expectWrapped bool
+	var content []waBinary.Node
+	namespace := "w:profile:picture"
+	if params.IsCommunity {
+		target = types.EmptyJID
+		namespace = "w:g2"
+		to = jid
+		attrs["parent_group_jid"] = jid
+		expectWrapped = true
+		content = []waBinary.Node{{
+			Tag: "pictures",
+			Content: []waBinary.Node{{
+				Tag:   "picture",
+				Attrs: attrs,
+			}},
+		}}
+	} else {
+		to = types.ServerJID
+		target = jid
+		content = []waBinary.Node{{
 			Tag:   "picture",
 			Attrs: attrs,
-		}},
+		}}
+	}
+	resp, err := cli.sendIQ(infoQuery{
+		Namespace: namespace,
+		Type:      "get",
+		To:        to,
+		Target:    target,
+		Content:   content,
 	})
 	if errors.Is(err, ErrIQNotAuthorized) {
 		return nil, wrapIQError(ErrProfilePictureUnauthorized, err)
 	} else if errors.Is(err, ErrIQNotFound) {
-		return nil, nil
+		return nil, wrapIQError(ErrProfilePictureNotSet, err)
 	} else if err != nil {
 		return nil, err
 	}
+	if expectWrapped {
+		pics, ok := resp.GetOptionalChildByTag("pictures")
+		if !ok {
+			return nil, &ElementMissingError{Tag: "pictures", In: "response to profile picture query"}
+		}
+		resp = &pics
+	}
 	picture, ok := resp.GetOptionalChildByTag("picture")
 	if !ok {
+		if params.ExistingID != "" {
+			return nil, nil
+		}
 		return nil, &ElementMissingError{Tag: "picture", In: "response to profile picture query"}
 	}
 	var info types.ProfilePictureInfo
 	ag := picture.AttrGetter()
+	if ag.OptionalInt("status") == 304 {
+		return nil, nil
+	}
 	info.ID = ag.String("id")
 	info.URL = ag.String("url")
 	info.Type = ag.String("type")
@@ -265,13 +404,21 @@ func (cli *Client) updatePushName(user types.JID, messageInfo *types.MessageInfo
 	}
 }
 
-func (cli *Client) updateBusinessName(user types.JID, name string) {
+func (cli *Client) updateBusinessName(user types.JID, messageInfo *types.MessageInfo, name string) {
 	if cli.Store.Contacts == nil {
 		return
 	}
-	err := cli.Store.Contacts.PutBusinessName(user, name)
+	changed, previousName, err := cli.Store.Contacts.PutBusinessName(user, name)
 	if err != nil {
 		cli.Log.Errorf("Failed to save business name of %s in device store: %v", user, err)
+	} else if changed {
+		cli.Log.Debugf("Business name of %s changed from %s to %s, dispatching event", user, previousName, name)
+		cli.dispatchEvent(&events.BusinessName{
+			JID:             user,
+			Message:         messageInfo,
+			OldBusinessName: previousName,
+			NewBusinessName: name,
+		})
 	}
 }
 
@@ -283,6 +430,10 @@ func parseVerifiedName(businessNode waBinary.Node) (*types.VerifiedName, error) 
 	if !ok {
 		return nil, nil
 	}
+	return parseVerifiedNameContent(verifiedNameNode)
+}
+
+func parseVerifiedNameContent(verifiedNameNode waBinary.Node) (*types.VerifiedName, error) {
 	rawCert, ok := verifiedNameNode.Content.([]byte)
 	if !ok {
 		return nil, nil
@@ -293,7 +444,7 @@ func parseVerifiedName(businessNode waBinary.Node) (*types.VerifiedName, error) 
 	if err != nil {
 		return nil, err
 	}
-	var certDetails waProto.VerifiedNameDetails
+	var certDetails waProto.VerifiedNameCertificate_Details
 	err = proto.Unmarshal(cert.GetDetails(), &certDetails)
 	if err != nil {
 		return nil, err
@@ -321,7 +472,7 @@ func parseDeviceList(user string, deviceNode waBinary.Node) []types.JID {
 	return devices
 }
 
-func (cli *Client) usync(jids []types.JID, mode, context string, query []waBinary.Node) (*waBinary.Node, error) {
+func (cli *Client) usync(ctx context.Context, jids []types.JID, mode, context string, query []waBinary.Node) (*waBinary.Node, error) {
 	userList := make([]waBinary.Node, len(jids))
 	for i, jid := range jids {
 		userList[i].Tag = "user"
@@ -341,6 +492,7 @@ func (cli *Client) usync(jids []types.JID, mode, context string, query []waBinar
 		}
 	}
 	resp, err := cli.sendIQ(infoQuery{
+		Context:   ctx,
 		Namespace: "usync",
 		Type:      "get",
 		To:        types.ServerJID,

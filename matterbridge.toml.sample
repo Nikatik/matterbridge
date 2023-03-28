@@ -122,10 +122,11 @@ RejoinDelay=0
 #Only works in IRC right now.
 ColorNicks=false
 
-#RunCommands allows you to send RAW irc commands after connection
+#RunCommands allows you to send RAW irc commands after connection.
+#The string {BOTNICK} (case sensitive) will be replaced with the bot's current nickname.
 #Array of strings
 #OPTIONAL (default empty)
-RunCommands=["PRIVMSG user hello","PRIVMSG chanserv something"]
+RunCommands=["PRIVMSG user hello","PRIVMSG chanserv something", "MODE {BOTNICK} +B"]
 
 #PingDelay specifies how long to wait to send a ping to the irc server.
 #You can use s for second, m for minute
@@ -187,7 +188,7 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
 
@@ -197,7 +198,7 @@ ShowJoinPart=false
 VerboseJoinPart=false
 
 #Do not send joins/parts to other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 NoSendJoinPart=false
 
@@ -324,7 +325,7 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
 
@@ -491,12 +492,12 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
 
 #Do not send joins/parts to other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 NoSendJoinPart=false
 
@@ -578,7 +579,7 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
 
@@ -686,7 +687,7 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
 
@@ -825,12 +826,12 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
 
 #Do not send joins/parts to other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 NoSendJoinPart=false
 
@@ -1137,7 +1138,7 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
 
@@ -1274,7 +1275,7 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
 
@@ -1328,6 +1329,15 @@ HTMLDisable=false
 # UseUserName shows the username instead of the server nickname
 UseUserName=false
 
+# Matrix quotes replies and as of matterbridge 1.24.0 we strip those as this causes
+# issues with bridges support threading and have PreserveThreading enabled.
+# But if you for example use mattermost or discord with webhooks you'll need to enable 
+# this (and keep PreserveThreading disabled) if you want something that looks like a reply from matrix.
+# See issues: 
+# - https://github.com/42wim/matterbridge/issues/1819
+# - https://github.com/42wim/matterbridge/issues/1780
+KeepQuotedReply=false
+
 #Nicks you want to ignore.
 #Regular expressions supported
 #Messages from those users will not be sent to other bridges.
@@ -1377,9 +1387,14 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
+
+#Rename the bot in the current room to the username of the message
+#This will make an additional API request per message and will probably count towards rate limits
+#OPTIONAL (default false)
+SpoofUsername=false
 
 #StripNick only allows alphanumerical nicks. See https://github.com/42wim/matterbridge/issues/285
 #It will strip other characters from the nick
@@ -1469,7 +1484,7 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
 
@@ -1556,6 +1571,15 @@ SkipTLSVerify=false
 #Message to show when a message is too big
 #Default "<clipped message>"
 MessageClipped="<clipped message>"
+
+#Enable to show users joins/parts from other bridges
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
+#OPTIONAL (default false)
+ShowJoinPart=false
+
+#Do not send joins/parts to other bridges
+#OPTIONAL (default false)
+NoSendJoinPart=false
 
 ###################################################################
 #VK
@@ -1669,7 +1693,7 @@ Label=""
 RemoteNickFormat="[{PROTOCOL}] <{NICK}> "
 
 #Enable to show users joins/parts from other bridges
-#Currently works for messages from the following bridges: irc, mattermost, slack, discord
+#Currently works for messages from the following bridges: irc, mattermost, mumble, slack, discord
 #OPTIONAL (default false)
 ShowJoinPart=false
 
@@ -1932,6 +1956,7 @@ enable=true
     #   nctalk   |      token         |           xs25tz5y            | The token in the URL when you are in a chat. It will be the last part of the URL.
     # -------------------------------------------------------------------------------------------------------------------------------------
     #  telegram  |      chatid        |          -123456789           | A large negative number. see https://www.linkedin.com/pulse/telegram-bots-beginners-marco-frau
+    #            |   chatid/topicid   |          -123456789/12        | A large negative number/number.
     # -------------------------------------------------------------------------------------------------------------------------------------
     #  vk        |      peerid        |          2000000002           | A number that starts form 2000000000. Use --debug and send any message in chat to get PeerID in the logs
     # -------------------------------------------------------------------------------------------------------------------------------------

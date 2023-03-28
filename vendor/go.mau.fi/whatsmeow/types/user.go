@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Tulir Asokan
+// Copyright (c) 2022 Tulir Asokan
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -15,7 +15,7 @@ import (
 // VerifiedName contains verified WhatsApp business details.
 type VerifiedName struct {
 	Certificate *waProto.VerifiedNameCertificate
-	Details     *waProto.VerifiedNameDetails
+	Details     *waProto.VerifiedNameCertificate_Details
 }
 
 // UserInfo contains info about a WhatsApp user.
@@ -75,6 +75,13 @@ type BusinessMessageLinkTarget struct {
 	Message string // The message that WhatsApp clients will pre-fill in the input box when clicking the link.
 }
 
+// ContactQRLinkTarget contains the info that is found using a contact QR link (see Client.ResolveContactQRLink)
+type ContactQRLinkTarget struct {
+	JID      JID    // The JID of the user.
+	Type     string // Might always be "contact".
+	PushName string // The notify / push name of the user.
+}
+
 // PrivacySetting is an individual setting value in the user's privacy settings.
 type PrivacySetting string
 
@@ -93,4 +100,24 @@ type PrivacySettings struct {
 	Status       PrivacySetting
 	Profile      PrivacySetting
 	ReadReceipts PrivacySetting
+}
+
+// StatusPrivacyType is the type of list in StatusPrivacy.
+type StatusPrivacyType string
+
+const (
+	// StatusPrivacyTypeContacts means statuses are sent to all contacts.
+	StatusPrivacyTypeContacts StatusPrivacyType = "contacts"
+	// StatusPrivacyTypeBlacklist means statuses are sent to all contacts, except the ones on the list.
+	StatusPrivacyTypeBlacklist StatusPrivacyType = "blacklist"
+	// StatusPrivacyTypeWhitelist means statuses are only sent to users on the list.
+	StatusPrivacyTypeWhitelist StatusPrivacyType = "whitelist"
+)
+
+// StatusPrivacy contains the settings for who to send status messages to by default.
+type StatusPrivacy struct {
+	Type StatusPrivacyType
+	List []JID
+
+	IsDefault bool
 }

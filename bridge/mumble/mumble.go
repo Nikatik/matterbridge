@@ -93,7 +93,7 @@ func (b *Bmumble) JoinChannel(channel config.ChannelInfo) error {
 func (b *Bmumble) Send(msg config.Message) (string, error) {
 	// Only process text messages
 	b.Log.Debugf("=> Received local message %#v", msg)
-	if msg.Event != "" && msg.Event != config.EventUserAction {
+	if msg.Event != "" && msg.Event != config.EventUserAction && msg.Event != config.EventJoinLeave {
 		return "", nil
 	}
 
@@ -250,7 +250,12 @@ func (b *Bmumble) processMessage(msg *config.Message) {
 	// If there is a maximum message length, split and truncate the lines
 	var msgLines []string
 	if maxLength := b.serverConfig.MaximumMessageLength; maxLength != nil {
-		msgLines = helper.GetSubLines(msg.Text, *maxLength-len(msg.Username), b.GetString("MessageClipped"))
+		if *maxLength != 0 { // Some servers will have unlimited message lengths.
+			// Not doing this makes underflows happen.
+			msgLines = helper.GetSubLines(msg.Text, *maxLength-len(msg.Username), b.GetString("MessageClipped"))
+		} else {
+			msgLines = helper.GetSubLines(msg.Text, 0, b.GetString("MessageClipped"))
+		}
 	} else {
 		msgLines = helper.GetSubLines(msg.Text, 0, b.GetString("MessageClipped"))
 	}

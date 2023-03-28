@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -69,6 +70,7 @@ var (
 	_ DownloadableMessage   = (*waProto.VideoMessage)(nil)
 	_ DownloadableMessage   = (*waProto.DocumentMessage)(nil)
 	_ DownloadableMessage   = (*waProto.StickerMessage)(nil)
+	_ DownloadableMessage   = (*waProto.StickerMetadata)(nil)
 	_ DownloadableMessage   = (*waProto.HistorySyncNotification)(nil)
 	_ DownloadableMessage   = (*waProto.ExternalBlobReference)(nil)
 	_ DownloadableThumbnail = (*waProto.ExtendedTextMessage)(nil)
@@ -95,6 +97,7 @@ var classToMediaType = map[protoreflect.Name]MediaType{
 	"VideoMessage":    MediaVideo,
 	"DocumentMessage": MediaDocument,
 	"StickerMessage":  MediaImage,
+	"StickerMetadata": MediaImage,
 
 	"HistorySyncNotification": MediaHistory,
 	"ExternalBlobReference":   MediaAppState,
@@ -150,9 +153,10 @@ func getSize(msg DownloadableMessage) int {
 // DownloadThumbnail downloads a thumbnail from a message.
 //
 // This is primarily intended for downloading link preview thumbnails, which are in ExtendedTextMessage:
-//     var msg *waProto.Message
-//     ...
-//     thumbnailImageBytes, err := cli.DownloadThumbnail(msg.GetExtendedTextMessage())
+//
+//	var msg *waProto.Message
+//	...
+//	thumbnailImageBytes, err := cli.DownloadThumbnail(msg.GetExtendedTextMessage())
 func (cli *Client) DownloadThumbnail(msg DownloadableThumbnail) ([]byte, error) {
 	mediaType, ok := classToThumbnailMediaType[msg.ProtoReflect().Descriptor().Name()]
 	if !ok {
@@ -172,9 +176,10 @@ func GetMediaType(msg DownloadableMessage) MediaType {
 // Download downloads the attachment from the given protobuf message.
 //
 // The attachment is a specific part of a Message protobuf struct, not the message itself, e.g.
-//     var msg *waProto.Message
-//     ...
-//     imageData, err := cli.Download(msg.GetImageMessage())
+//
+//	var msg *waProto.Message
+//	...
+//	imageData, err := cli.Download(msg.GetImageMessage())
 //
 // You can also use DownloadAny to download the first non-nil sub-message.
 func (cli *Client) Download(msg DownloadableMessage) ([]byte, error) {
@@ -183,11 +188,20 @@ func (cli *Client) Download(msg DownloadableMessage) ([]byte, error) {
 		return nil, fmt.Errorf("%w '%s'", ErrUnknownMediaType, string(msg.ProtoReflect().Descriptor().Name()))
 	}
 	urlable, ok := msg.(downloadableMessageWithURL)
-	if ok && len(urlable.GetUrl()) > 0 {
-		return cli.downloadAndDecrypt(urlable.GetUrl(), msg.GetMediaKey(), mediaType, getSize(msg), msg.GetFileEncSha256(), msg.GetFileSha256())
+	var url string
+	var isWebWhatsappNetURL bool
+	if ok {
+		url = urlable.GetUrl()
+		isWebWhatsappNetURL = strings.HasPrefix(url, "https://web.whatsapp.net")
+	}
+	if len(url) > 0 && !isWebWhatsappNetURL {
+		return cli.downloadAndDecrypt(url, msg.GetMediaKey(), mediaType, getSize(msg), msg.GetFileEncSha256(), msg.GetFileSha256())
 	} else if len(msg.GetDirectPath()) > 0 {
 		return cli.DownloadMediaWithPath(msg.GetDirectPath(), msg.GetFileEncSha256(), msg.GetFileSha256(), msg.GetMediaKey(), getSize(msg), mediaType, mediaTypeToMMSType[mediaType])
 	} else {
+		if isWebWhatsappNetURL {
+			cli.Log.Warnf("Got a media message with a web.whatsapp.net URL (%s) and no direct path", url)
+		}
 		return nil, ErrNoURLPresent
 	}
 }

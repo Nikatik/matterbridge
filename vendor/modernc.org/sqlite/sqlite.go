@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:generate go run generator.go
+//go:generate go run generator.go -full-path-comments
 
 package sqlite // import "modernc.org/sqlite"
 
@@ -657,14 +657,14 @@ type tx struct {
 	c *conn
 }
 
-func newTx(c *conn) (*tx, error) {
+func newTx(c *conn, opts driver.TxOptions) (*tx, error) {
 	r := &tx{c: c}
-	var sql string
-	if c.beginMode != "" {
+
+	sql := "begin"
+	if !opts.ReadOnly && c.beginMode != "" {
 		sql = "begin " + c.beginMode
-	} else {
-		sql = "begin"
 	}
+
 	if err := r.exec(context.Background(), sql); err != nil {
 		return nil, err
 	}
@@ -752,7 +752,7 @@ type conn struct {
 }
 
 func newConn(dsn string) (*conn, error) {
-	var query string
+	var query, vfsName string
 
 	// Parse the query parameters from the dsn and them from the dsn if not prefixed by file:
 	// https://github.com/mattn/go-sqlite3/blob/3392062c729d77820afc1f5cae3427f0de39e954/sqlite3.go#L1046
@@ -760,6 +760,12 @@ func newConn(dsn string) (*conn, error) {
 	pos := strings.IndexRune(dsn, '?')
 	if pos >= 1 {
 		query = dsn[pos+1:]
+		var err error
+		vfsName, err = getVFSName(query)
+		if err != nil {
+			return nil, err
+		}
+
 		if !strings.HasPrefix(dsn, "file:") {
 			dsn = dsn[:pos]
 		}
@@ -768,6 +774,7 @@ func newConn(dsn string) (*conn, error) {
 	c := &conn{tls: libc.NewTLS()}
 	db, err := c.openV2(
 		dsn,
+		vfsName,
 		sqlite3.SQLITE_OPEN_READWRITE|sqlite3.SQLITE_OPEN_CREATE|
 			sqlite3.SQLITE_OPEN_FULLMUTEX|
 			sqlite3.SQLITE_OPEN_URI,
@@ -790,6 +797,23 @@ func newConn(dsn string) (*conn, error) {
 	return c, nil
 }
 
+func getVFSName(query string) (r string, err error) {
+	q, err := url.ParseQuery(query)
+	if err != nil {
+		return "", err
+	}
+
+	for _, v := range q["vfs"] {
+		if r != "" && r != v {
+			return "", fmt.Errorf("conflicting vfs query parameters: %v", q["vfs"])
+		}
+
+		r = v
+	}
+
+	return r, nil
+}
+
 func applyQueryParams(c *conn, query string) error {
 	q, err := url.ParseQuery(query)
 	if err != nil {
@@ -810,7 +834,6 @@ func applyQueryParams(c *conn, query string) error {
 			return fmt.Errorf("unknown _time_format %q", v)
 		}
 		c.writeTimeFormat = f
-		return nil
 	}
 
 	if v := q.Get("_txlock"); v != "" {
@@ -1090,7 +1113,7 @@ func (c *conn) bindText(pstmt uintptr, idx1 int, value string) (uintptr, error) 
 
 // int sqlite3_bind_blob(sqlite3_stmt*, int, const void*, int n, void(*)(void*));
 func (c *conn) bindBlob(pstmt uintptr, idx1 int, value []byte) (uintptr, error) {
-	if len(value) == 0 {
+	if value != nil && len(value) == 0 {
 		if rc := sqlite3.Xsqlite3_bind_zeroblob(c.tls, pstmt, int32(idx1), 0); rc != sqlite3.SQLITE_OK {
 			return 0, c.errstr(rc)
 		}
@@ -1101,7 +1124,9 @@ func (c *conn) bindBlob(pstmt uintptr, idx1 int, value []byte) (uintptr, error) 
 	if err != nil {
 		return 0, err
 	}
-	copy((*libc.RawMem)(unsafe.Pointer(p))[:len(value):len(value)], value)
+	if len(value) != 0 {
+		copy((*libc.RawMem)(unsafe.Pointer(p))[:len(value):len(value)], value)
+	}
 	if rc := sqlite3.Xsqlite3_bind_blob(c.tls, pstmt, int32(idx1), p, int32(len(value)), 0); rc != sqlite3.SQLITE_OK {
 		c.free(p)
 		return 0, c.errstr(rc)
@@ -1223,8 +1248,8 @@ func (c *conn) extendedResultCodes(on bool) error {
 //   int flags,              /* Flags */
 //   const char *zVfs        /* Name of VFS module to use */
 // );
-func (c *conn) openV2(name string, flags int32) (uintptr, error) {
-	var p, s uintptr
+func (c *conn) openV2(name, vfsName string, flags int32) (uintptr, error) {
+	var p, s, vfs uintptr
 
 	defer func() {
 		if p != 0 {
@@ -1232,6 +1257,9 @@ func (c *conn) openV2(name string, flags int32) (uintptr, error) {
 		}
 		if s != 0 {
 			c.free(s)
+		}
+		if vfs != 0 {
+			c.free(vfs)
 		}
 	}()
 
@@ -1244,7 +1272,13 @@ func (c *conn) openV2(name string, flags int32) (uintptr, error) {
 		return 0, err
 	}
 
-	if rc := sqlite3.Xsqlite3_open_v2(c.tls, s, p, flags, 0); rc != sqlite3.SQLITE_OK {
+	if vfsName != "" {
+		if vfs, err = libc.CString(vfsName); err != nil {
+			return 0, err
+		}
+	}
+
+	if rc := sqlite3.Xsqlite3_open_v2(c.tls, s, p, flags, vfs); rc != sqlite3.SQLITE_OK {
 		return 0, c.errstr(rc)
 	}
 
@@ -1290,7 +1324,7 @@ func (c *conn) Begin() (driver.Tx, error) {
 }
 
 func (c *conn) begin(ctx context.Context, opts driver.TxOptions) (t driver.Tx, err error) {
-	return newTx(c)
+	return newTx(c, opts)
 }
 
 // Close invalidates and potentially stops any current prepared statements and

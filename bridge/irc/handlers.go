@@ -122,7 +122,6 @@ func (b *Birc) handleNewConnection(client *girc.Client, event girc.Event) {
 	i := b.i
 	b.Nick = event.Params[0]
 
-	i.Handlers.ClearAll()
 	i.Handlers.AddBg("PRIVMSG", b.handlePrivMsg)
 	i.Handlers.AddBg("CTCP_ACTION", b.handlePrivMsg)
 	i.Handlers.Add(girc.RPL_TOPICWHOTIME, b.handleTopicWhoTime)
@@ -244,6 +243,7 @@ func (b *Birc) handlePrivMsg(client *girc.Client, event girc.Event) {
 
 func (b *Birc) handleRunCommands() {
 	for _, cmd := range b.GetStringSlice("RunCommands") {
+		cmd = strings.ReplaceAll(cmd, "{BOTNICK}", b.Nick)
 		if err := b.i.Cmd.SendRaw(cmd); err != nil {
 			b.Log.Errorf("RunCommands %s failed: %s", cmd, err)
 		}

@@ -114,6 +114,7 @@ And more...
 
 ### 3rd party via matterbridge api
 
+- [Delta Chat](https://github.com/deltachat-bot/matterdelta)
 - [Discourse](https://github.com/DeclanHoare/matterbabble)
 - [Facebook messenger](https://github.com/powerjungle/fbridge-asyncio)
 - [Facebook messenger](https://github.com/VictorNine/fbridge)
@@ -146,6 +147,7 @@ Used by the projects below. Feel free to make a PR to add your project to this l
 - [Vintage Story](https://github.com/NikkyAI/vs-matterbridge)
 - [ServUO-matterbridge](https://github.com/kuoushi/ServUO-Matterbridge) (A matterbridge connector for ServUO servers)
 - [ts-matterbridge](https://github.com/Archeb/ts-matterbridge) (Integrate teamspeak chat with matterbridge)
+- [beerchat](https://github.com/mt-mods/beerchat) (Matterbridge link for minetest)
 
 ## Chat with us
 
@@ -172,7 +174,7 @@ See <https://github.com/42wim/matterbridge/wiki>
 
 ### Binaries
 
-- Latest stable release [v1.25.0](https://github.com/42wim/matterbridge/releases/latest)
+- Latest stable release [v1.26.0](https://github.com/42wim/matterbridge/releases/latest)
 - Development releases (follows master) can be downloaded [here](https://github.com/42wim/matterbridge/actions) selecting the latest green build and then artifacts.
 
 To install or upgrade just download the latest [binary](https://github.com/42wim/matterbridge/releases/latest). On \*nix platforms you may need to make the binary executable - you can do this by running `chmod a+x` on the binary (example: `chmod a+x matterbridge-1.24.1-linux-64bit`). After downloading (and making the binary executable, if necessary), follow the instructions on the [howto](https://github.com/42wim/matterbridge/wiki/How-to-create-your-config) for a step by step walkthrough for creating your configuration.
@@ -188,10 +190,12 @@ To install or upgrade just download the latest [binary](https://github.com/42wim
 Most people just want to use binaries, you can find those [here](https://github.com/42wim/matterbridge/releases/latest)
 
 If you really want to build from source, follow these instructions:
-Go 1.17+ is required. Make sure you have [Go](https://golang.org/doc/install) properly installed.
+Go 1.18+ is required. Make sure you have [Go](https://golang.org/doc/install) properly installed.
 
 Building the binary with **all** the bridges enabled needs about 3GB RAM to compile.
-You can reduce this memory requirement to 0,5GB RAM by adding the `nomsteams` tag if you don't need/use the Microsoft Teams bridge
+You can reduce this memory requirement to 0,5GB RAM by adding the `nomsteams` tag if you don't need/use the Microsoft Teams bridge.
+
+Matterbridge can be build without gcc/c-compiler: If you're running on windows first run `set CGO_ENABLED=0` on other platforms you prepend `CGO_ENABLED=0` to the `go build` command. (eg `CGO_ENABLED=0 go install github.com/42wim/matterbridge`)
 
 To install the latest stable run:
 
@@ -222,6 +226,8 @@ matterbridge
 
 Because the library we use for Whatsapp multidevice support includes a GPL3 library we can not provide you binaries.
 (as this would require the Matterbridge to change it license to GPL)
+
+Matterbridge can be build without gcc/c-compiler: If you're running on windows first run `set CGO_ENABLED=0` on other platforms you prepend `CGO_ENABLED=0` to the `go build` command. (eg `CGO_ENABLED=0 go install github.com/42wim/matterbridge`)
 
 So this means you have to build it yourself using the instructions below:
 

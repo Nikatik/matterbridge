@@ -7,6 +7,7 @@
 package whatsmeow
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"time"
@@ -62,7 +63,7 @@ func (cli *Client) getRecentMessage(to types.JID, id types.MessageID) *waProto.M
 func (cli *Client) getMessageForRetry(receipt *events.Receipt, messageID types.MessageID) (*waProto.Message, error) {
 	msg := cli.getRecentMessage(receipt.Chat, messageID)
 	if msg == nil {
-		msg = cli.GetMessageForRetry(receipt.Chat, messageID)
+		msg = cli.GetMessageForRetry(receipt.Sender, receipt.Chat, messageID)
 		if msg == nil {
 			return nil, fmt.Errorf("couldn't find message %s", messageID)
 		} else {
@@ -74,6 +75,25 @@ func (cli *Client) getMessageForRetry(receipt *events.Receipt, messageID types.M
 	return proto.Clone(msg).(*waProto.Message), nil
 }
 
+const recreateSessionTimeout = 1 * time.Hour
+
+func (cli *Client) shouldRecreateSession(retryCount int, jid types.JID) (reason string, recreate bool) {
+	cli.sessionRecreateHistoryLock.Lock()
+	defer cli.sessionRecreateHistoryLock.Unlock()
+	if !cli.Store.ContainsSession(jid.SignalAddress()) {
+		cli.sessionRecreateHistory[jid] = time.Now()
+		return "we don't have a Signal session with them", true
+	} else if retryCount < 2 {
+		return "", false
+	}
+	prevTime, ok := cli.sessionRecreateHistory[jid]
+	if !ok || prevTime.Add(recreateSessionTimeout).Before(time.Now()) {
+		cli.sessionRecreateHistory[jid] = time.Now()
+		return "retry count > 1 and over an hour since last recreation", true
+	}
+	return "", false
+}
+
 // handleRetryReceipt handles an incoming retry receipt for an outgoing message.
 func (cli *Client) handleRetryReceipt(receipt *events.Receipt, node *waBinary.Node) error {
 	retryChild, ok := node.GetOptionalChildByTag("retry")
@@ -82,7 +102,7 @@ func (cli *Client) handleRetryReceipt(receipt *events.Receipt, node *waBinary.No
 	}
 	ag := retryChild.AttrGetter()
 	messageID := ag.String("id")
-	timestamp := time.Unix(ag.Int64("t"), 0)
+	timestamp := ag.UnixTime("t")
 	retryCount := ag.Int("count")
 	if !ag.OK() {
 		return ag.Error()
@@ -91,10 +111,14 @@ func (cli *Client) handleRetryReceipt(receipt *events.Receipt, node *waBinary.No
 	if err != nil {
 		return err
 	}
+	ownID := cli.getOwnID()
+	if ownID.IsEmpty() {
+		return ErrNotLoggedIn
+	}
 
 	if receipt.IsGroup {
 		builder := groups.NewGroupSessionBuilder(cli.Store, pbSerializer)
-		senderKeyName := protocol.NewSenderKeyName(receipt.Chat.String(), cli.Store.ID.SignalAddress())
+		senderKeyName := protocol.NewSenderKeyName(receipt.Chat.String(), ownID.SignalAddress())
 		signalSKDMessage, err := builder.Create(senderKeyName)
 		if err != nil {
 			cli.Log.Warnf("Failed to create sender key distribution message to include in retry of %s in %s to %s: %v", messageID, receipt.Chat, receipt.Sender, err)
@@ -113,7 +137,7 @@ func (cli *Client) handleRetryReceipt(receipt *events.Receipt, node *waBinary.No
 		}
 	}
 
-	if cli.PreRetryCallback != nil && !cli.PreRetryCallback(receipt, retryCount, msg) {
+	if cli.PreRetryCallback != nil && !cli.PreRetryCallback(receipt, messageID, retryCount, msg) {
 		cli.Log.Debugf("Cancelled retry receipt in PreRetryCallback")
 		return nil
 	}
@@ -129,14 +153,10 @@ func (cli *Client) handleRetryReceipt(receipt *events.Receipt, node *waBinary.No
 		if err != nil {
 			return fmt.Errorf("failed to read prekey bundle in retry receipt: %w", err)
 		}
-	} else if retryCount >= 2 || !cli.Store.ContainsSession(receipt.Sender.SignalAddress()) {
-		if retryCount >= 2 {
-			cli.Log.Debugf("Fetching prekeys for %s due to retry receipt with count>1 but no prekey bundle", receipt.Sender)
-		} else {
-			cli.Log.Debugf("Fetching prekeys for %s for handling retry receipt because we don't have a Signal session with them", receipt.Sender)
-		}
+	} else if reason, recreate := cli.shouldRecreateSession(retryCount, receipt.Sender); recreate {
+		cli.Log.Debugf("Fetching prekeys for %s for handling retry receipt with no prekey bundle because %s", receipt.Sender, reason)
 		var keys map[types.JID]preKeyResp
-		keys, err = cli.fetchPreKeys([]types.JID{receipt.Sender})
+		keys, err = cli.fetchPreKeys(context.TODO(), []types.JID{receipt.Sender})
 		if err != nil {
 			return err
 		}
@@ -157,9 +177,12 @@ func (cli *Client) handleRetryReceipt(receipt *events.Receipt, node *waBinary.No
 
 	attrs := waBinary.Attrs{
 		"to":   node.Attrs["from"],
-		"type": "text",
+		"type": getTypeFromMessage(msg),
 		"id":   messageID,
 		"t":    timestamp.Unix(),
+	}
+	if !receipt.IsGroup {
+		attrs["device_fanout"] = false
 	}
 	if participant, ok := node.Attrs["participant"]; ok {
 		attrs["participant"] = participant
@@ -170,18 +193,15 @@ func (cli *Client) handleRetryReceipt(receipt *events.Receipt, node *waBinary.No
 	if edit, ok := node.Attrs["edit"]; ok {
 		attrs["edit"] = edit
 	}
-	req := waBinary.Node{
+	content := []waBinary.Node{*encrypted}
+	if includeDeviceIdentity {
+		content = append(content, cli.makeDeviceIdentityNode())
+	}
+	err = cli.sendNode(waBinary.Node{
 		Tag:     "message",
 		Attrs:   attrs,
-		Content: []waBinary.Node{*encrypted},
-	}
-	if includeDeviceIdentity {
-		err = cli.appendDeviceIdentityNode(&req)
-		if err != nil {
-			return fmt.Errorf("failed to add device identity to retry message: %w", err)
-		}
-	}
-	err = cli.sendNode(req)
+		Content: content,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to send retry message: %w", err)
 	}

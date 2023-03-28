@@ -8,6 +8,7 @@
 package store
 
 import (
+	"fmt"
 	"time"
 
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -79,7 +80,7 @@ type ContactEntry struct {
 
 type ContactStore interface {
 	PutPushName(user types.JID, pushName string) (bool, string, error)
-	PutBusinessName(user types.JID, businessName string) error
+	PutBusinessName(user types.JID, businessName string) (bool, string, error)
 	PutContactName(user types.JID, fullName, firstName string) error
 	PutAllContactNames(contacts []ContactEntry) error
 	GetContact(user types.JID) (types.ContactInfo, error)
@@ -98,6 +99,30 @@ type DeviceContainer interface {
 	DeleteDevice(store *Device) error
 }
 
+type MessageSecretInsert struct {
+	Chat   types.JID
+	Sender types.JID
+	ID     types.MessageID
+	Secret []byte
+}
+
+type MsgSecretStore interface {
+	PutMessageSecrets([]MessageSecretInsert) error
+	PutMessageSecret(chat, sender types.JID, id types.MessageID, secret []byte) error
+	GetMessageSecret(chat, sender types.JID, id types.MessageID) ([]byte, error)
+}
+
+type PrivacyToken struct {
+	User      types.JID
+	Token     []byte
+	Timestamp time.Time
+}
+
+type PrivacyTokenStore interface {
+	PutPrivacyTokens(tokens ...PrivacyToken) error
+	GetPrivacyToken(user types.JID) (*PrivacyToken, error)
+}
+
 type Device struct {
 	Log waLog.Logger
 
@@ -113,16 +138,28 @@ type Device struct {
 	BusinessName string
 	PushName     string
 
-	Initialized  bool
-	Identities   IdentityStore
-	Sessions     SessionStore
-	PreKeys      PreKeyStore
-	SenderKeys   SenderKeyStore
-	AppStateKeys AppStateSyncKeyStore
-	AppState     AppStateStore
-	Contacts     ContactStore
-	ChatSettings ChatSettingsStore
-	Container    DeviceContainer
+	Initialized   bool
+	Identities    IdentityStore
+	Sessions      SessionStore
+	PreKeys       PreKeyStore
+	SenderKeys    SenderKeyStore
+	AppStateKeys  AppStateSyncKeyStore
+	AppState      AppStateStore
+	Contacts      ContactStore
+	ChatSettings  ChatSettingsStore
+	MsgSecrets    MsgSecretStore
+	PrivacyTokens PrivacyTokenStore
+	Container     DeviceContainer
+
+	DatabaseErrorHandler func(device *Device, action string, attemptIndex int, err error) (retry bool)
+}
+
+func (device *Device) handleDatabaseError(attemptIndex int, err error, action string, args ...interface{}) bool {
+	if device.DatabaseErrorHandler != nil {
+		return device.DatabaseErrorHandler(device, fmt.Sprintf(action, args...), attemptIndex, err)
+	}
+	device.Log.Errorf("Failed to %s: %v", fmt.Sprintf(action, args...), err)
+	return false
 }
 
 func (device *Device) Save() error {

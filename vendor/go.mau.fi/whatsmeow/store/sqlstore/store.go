@@ -28,7 +28,8 @@ var ErrInvalidLength = errors.New("database returned byte array with illegal len
 // PostgresArrayWrapper is a function to wrap array values before passing them to the sql package.
 //
 // When using github.com/lib/pq, you should set
-//   whatsmeow.PostgresArrayWrapper = pq.Array
+//
+//	whatsmeow.PostgresArrayWrapper = pq.Array
 var PostgresArrayWrapper func(interface{}) interface {
 	driver.Valuer
 	sql.Scanner
@@ -67,7 +68,7 @@ var _ store.ContactStore = (*SQLStore)(nil)
 const (
 	putIdentityQuery = `
 		INSERT INTO whatsmeow_identity_keys (our_jid, their_id, identity) VALUES ($1, $2, $3)
-		ON CONFLICT (our_jid, their_id) DO UPDATE SET identity=$3
+		ON CONFLICT (our_jid, their_id) DO UPDATE SET identity=excluded.identity
 	`
 	deleteAllIdentitiesQuery = `DELETE FROM whatsmeow_identity_keys WHERE our_jid=$1 AND their_id LIKE $2`
 	deleteIdentityQuery      = `DELETE FROM whatsmeow_identity_keys WHERE our_jid=$1 AND their_id=$2`
@@ -108,7 +109,7 @@ const (
 	hasSessionQuery = `SELECT true FROM whatsmeow_sessions WHERE our_jid=$1 AND their_id=$2`
 	putSessionQuery = `
 		INSERT INTO whatsmeow_sessions (our_jid, their_id, session) VALUES ($1, $2, $3)
-		ON CONFLICT (our_jid, their_id) DO UPDATE SET session=$3
+		ON CONFLICT (our_jid, their_id) DO UPDATE SET session=excluded.session
 	`
 	deleteAllSessionsQuery = `DELETE FROM whatsmeow_sessions WHERE our_jid=$1 AND their_id LIKE $2`
 	deleteSessionQuery     = `DELETE FROM whatsmeow_sessions WHERE our_jid=$1 AND their_id=$2`
@@ -259,7 +260,7 @@ const (
 	getSenderKeyQuery = `SELECT sender_key FROM whatsmeow_sender_keys WHERE our_jid=$1 AND chat_id=$2 AND sender_id=$3`
 	putSenderKeyQuery = `
 		INSERT INTO whatsmeow_sender_keys (our_jid, chat_id, sender_id, sender_key) VALUES ($1, $2, $3, $4)
-		ON CONFLICT (our_jid, chat_id, sender_id) DO UPDATE SET sender_key=$4
+		ON CONFLICT (our_jid, chat_id, sender_id) DO UPDATE SET sender_key=excluded.sender_key
 	`
 )
 
@@ -279,7 +280,9 @@ func (s *SQLStore) GetSenderKey(group, user string) (key []byte, err error) {
 const (
 	putAppStateSyncKeyQuery = `
 		INSERT INTO whatsmeow_app_state_sync_keys (jid, key_id, key_data, timestamp, fingerprint) VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (jid, key_id) DO UPDATE SET key_data=$3, timestamp=$4, fingerprint=$5
+		ON CONFLICT (jid, key_id) DO UPDATE
+			SET key_data=excluded.key_data, timestamp=excluded.timestamp, fingerprint=excluded.fingerprint
+			WHERE excluded.timestamp > whatsmeow_app_state_sync_keys.timestamp
 	`
 	getAppStateSyncKeyQuery = `SELECT key_data, timestamp, fingerprint FROM whatsmeow_app_state_sync_keys WHERE jid=$1 AND key_id=$2`
 )
@@ -301,7 +304,7 @@ func (s *SQLStore) GetAppStateSyncKey(id []byte) (*store.AppStateSyncKey, error)
 const (
 	putAppStateVersionQuery = `
 		INSERT INTO whatsmeow_app_state_version (jid, name, version, hash) VALUES ($1, $2, $3, $4)
-		ON CONFLICT (jid, name) DO UPDATE SET version=$3, hash=$4
+		ON CONFLICT (jid, name) DO UPDATE SET version=excluded.version, hash=excluded.hash
 	`
 	getAppStateVersionQuery                 = `SELECT version, hash FROM whatsmeow_app_state_version WHERE jid=$1 AND name=$2`
 	deleteAppStateVersionQuery              = `DELETE FROM whatsmeow_app_state_version WHERE jid=$1 AND name=$2`
@@ -435,11 +438,11 @@ const (
 	`
 	putPushNameQuery = `
 		INSERT INTO whatsmeow_contacts (our_jid, their_jid, push_name) VALUES ($1, $2, $3)
-		ON CONFLICT (our_jid, their_jid) DO UPDATE SET push_name=$3
+		ON CONFLICT (our_jid, their_jid) DO UPDATE SET push_name=excluded.push_name
 	`
 	putBusinessNameQuery = `
 		INSERT INTO whatsmeow_contacts (our_jid, their_jid, business_name) VALUES ($1, $2, $3)
-		ON CONFLICT (our_jid, their_jid) DO UPDATE SET business_name=$3
+		ON CONFLICT (our_jid, their_jid) DO UPDATE SET business_name=excluded.business_name
 	`
 	getContactQuery = `
 		SELECT first_name, full_name, push_name, business_name FROM whatsmeow_contacts WHERE our_jid=$1 AND their_jid=$2
@@ -470,23 +473,25 @@ func (s *SQLStore) PutPushName(user types.JID, pushName string) (bool, string, e
 	return false, "", nil
 }
 
-func (s *SQLStore) PutBusinessName(user types.JID, businessName string) error {
+func (s *SQLStore) PutBusinessName(user types.JID, businessName string) (bool, string, error) {
 	s.contactCacheLock.Lock()
 	defer s.contactCacheLock.Unlock()
 
 	cached, err := s.getContact(user)
 	if err != nil {
-		return err
+		return false, "", err
 	}
 	if cached.BusinessName != businessName {
 		_, err = s.db.Exec(putBusinessNameQuery, s.JID, user, businessName)
 		if err != nil {
-			return err
+			return false, "", err
 		}
+		previousName := cached.BusinessName
 		cached.BusinessName = businessName
 		cached.Found = true
+		return true, previousName, nil
 	}
-	return nil
+	return false, "", nil
 }
 
 func (s *SQLStore) PutContactName(user types.JID, firstName, fullName string) error {
@@ -643,7 +648,7 @@ func (s *SQLStore) GetAllContacts() (map[types.JID]types.ContactInfo, error) {
 const (
 	putChatSettingQuery = `
 		INSERT INTO whatsmeow_chat_settings (our_jid, chat_jid, %[1]s) VALUES ($1, $2, $3)
-		ON CONFLICT (our_jid, chat_jid) DO UPDATE SET %[1]s=$3
+		ON CONFLICT (our_jid, chat_jid) DO UPDATE SET %[1]s=excluded.%[1]s
 	`
 	getChatSettingsQuery = `
 		SELECT muted_until, pinned, archived FROM whatsmeow_chat_settings WHERE our_jid=$1 AND chat_jid=$2
@@ -683,4 +688,82 @@ func (s *SQLStore) GetChatSettings(chat types.JID) (settings types.LocalChatSett
 		settings.MutedUntil = time.Unix(mutedUntil, 0)
 	}
 	return
+}
+
+const (
+	putMsgSecret = `
+		INSERT INTO whatsmeow_message_secrets (our_jid, chat_jid, sender_jid, message_id, key)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (our_jid, chat_jid, sender_jid, message_id) DO NOTHING
+	`
+	getMsgSecret = `
+		SELECT key FROM whatsmeow_message_secrets WHERE our_jid=$1 AND chat_jid=$2 AND sender_jid=$3 AND message_id=$4
+	`
+)
+
+func (s *SQLStore) PutMessageSecrets(inserts []store.MessageSecretInsert) (err error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	for _, insert := range inserts {
+		_, err = tx.Exec(putMsgSecret, s.JID, insert.Chat.ToNonAD(), insert.Sender.ToNonAD(), insert.ID, insert.Secret)
+	}
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return
+}
+
+func (s *SQLStore) PutMessageSecret(chat, sender types.JID, id types.MessageID, secret []byte) (err error) {
+	_, err = s.db.Exec(putMsgSecret, s.JID, chat.ToNonAD(), sender.ToNonAD(), id, secret)
+	return
+}
+
+func (s *SQLStore) GetMessageSecret(chat, sender types.JID, id types.MessageID) (secret []byte, err error) {
+	err = s.db.QueryRow(getMsgSecret, s.JID, chat.ToNonAD(), sender.ToNonAD(), id).Scan(&secret)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return
+}
+
+const (
+	putPrivacyTokens = `
+		INSERT INTO whatsmeow_privacy_tokens (our_jid, their_jid, token, timestamp)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (our_jid, their_jid) DO UPDATE SET token=EXCLUDED.token, timestamp=EXCLUDED.timestamp
+	`
+	getPrivacyToken = `SELECT token, timestamp FROM whatsmeow_privacy_tokens WHERE our_jid=$1 AND their_jid=$2`
+)
+
+func (s *SQLStore) PutPrivacyTokens(tokens ...store.PrivacyToken) error {
+	args := make([]any, 1+len(tokens)*3)
+	placeholders := make([]string, len(tokens))
+	args[0] = s.JID
+	for i, token := range tokens {
+		args[i*3+1] = token.User.ToNonAD().String()
+		args[i*3+2] = token.Token
+		args[i*3+3] = token.Timestamp.Unix()
+		placeholders[i] = fmt.Sprintf("($1, $%d, $%d, $%d)", i*3+2, i*3+3, i*3+4)
+	}
+	query := strings.ReplaceAll(putPrivacyTokens, "($1, $2, $3, $4)", strings.Join(placeholders, ","))
+	_, err := s.db.Exec(query, args...)
+	return err
+}
+
+func (s *SQLStore) GetPrivacyToken(user types.JID) (*store.PrivacyToken, error) {
+	var token store.PrivacyToken
+	token.User = user.ToNonAD()
+	var ts int64
+	err := s.db.QueryRow(getPrivacyToken, s.JID, token.User).Scan(&token.Token, &ts)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	} else {
+		token.Timestamp = time.Unix(ts, 0)
+		return &token, nil
+	}
 }

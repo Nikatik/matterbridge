@@ -1,3 +1,66 @@
+# v1.26.0
+
+## New features
+
+- irc: Allow substitution of bot's nick in RunCommands (irc) (#1890)
+- matrix: Add Matrix username spoofing (#1875)
+
+## Enhancements
+
+- general: Update dependencies (#1951)
+- mattermost: Remove mattermost 5 support (#1936)
+- mumble: Implement sending of EventJoinLeave both to and from Mumble (#1915)
+- whatsappmulti: Improve attachment handling (whatsapp) (#1928)
+- whatsappmulti: Handle incoming document captions from whatsapp (#1935)
+
+## Bugfix
+
+- irc: Fix empty messages on IRC (#1897)
+- telegram: Fix message html entities escaping when sending to Telegram (#1855)
+- telegram/slack: Fix error messages in telegram and slack bridges (#1862)
+- telegram: Fix telegram attachment comment formatting and escaping (#1920)
+- telegram: Make the cgo lottie a build tag (-tag cgolottie) (#1955)
+- whatsappmulti: Update dependencies and fix whatsmeow API changes (#1887)
+- whatsappmulti: Fix the "Someone" nickname problem (whatsapp) (#1931)
+
+This release couldn't exist without the following contributors:
+@s3lph, @sas1024, @Glandos, @jx11r, @Lucki, @BuckarooBanzay, @ilmaisin, @Kufat
+
+# v1.25.2
+
+## Enhancements
+
+- general: Update dependencies (#1851,#1841)
+- mattermost: Support mattermost v7.x (#1852)
+
+## Bugfix
+
+- discord: Fix Unwanted join notifications from one Discord server to another (#1612)
+- discord: Ignore events from other guilds, add nosendjoinpart support (#1846)
+
+This release couldn't exist without the following contributors:
+@wlcx
+
+# v1.25.1
+
+## Enhancements
+
+- matrix: Add KeepQuotedReply option for matrix to fix regression (#1823)
+- slack: Improve Slack attachments formatting (slack) (#1807)
+
+## Bugfix
+
+- general: Update dependencies (#1813,#1822,#1833)
+- mattermost: Add space between filename and URL (mattermost). Fixes #1820
+- matrix: Update matterbridge/gomatrix. Fixes #1772 (#1803)
+- telegram: Do not modify .webm files (telegram). Fixes #17**88 (#1802)
+- telegram: Do not apply any markup to URL entities (telegram) (#1808)
+- telegram: Fix telegram message deletion request (#1818)
+- vk: Fix UploadMessagesPhoto for vk community chat (vk) (#1812)
+
+This release couldn't exist without the following contributors:
+@bd808, @chugunov, @sas1024, @SevereCloud, @ValdikSS
+
 # v1.25.0
 
 ## Breaking changes
